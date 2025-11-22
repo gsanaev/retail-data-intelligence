@@ -117,7 +117,7 @@ Repository structure and initial planning are in progress.
 
 For questions, feel free to reach out:
 
-**Diyorbek Nabiev**  
+**Golib Sanaev**  
 Data Scientist (Applied ML & Business Analytics)  
 GitHub: https://github.com/gsanaev  
 LinkedIn: https://linkedin.com/in/golib-sanaev 
