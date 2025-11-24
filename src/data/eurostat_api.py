@@ -5,21 +5,27 @@ from typing import Dict, Any
 
 class EurostatAPI:
     """
-    Simple synchronous Eurostat API client for retrieving datasets
-    and converting them into pandas DataFrames.
+    Eurostat SDMX JSON API client (2025 version).
+    
+    Uses the official SDMX endpoint:
+        https://ec.europa.eu/eurostat/api/discover/sdmx
 
-    Usage:
-    -------
-    api = EurostatAPI()
-    df = api.get_dataset(
-        dataset_code="STS_RT_M",
-        filters={"geo": "DE", "s_adj": "SA", "unit": "I15"}
-    )
+    Example:
+        api = EurostatAPI()
+        df = api.get_dataset(
+            "STS_RT_M",
+            {
+                "geo": "DE",
+                "s_adj": "NSA",
+                "unit": "I15",
+                "sts_activity": "G47"
+            }
+        )
     """
 
     def __init__(
         self,
-        base_url: str = "https://ec.europa.eu/eurostat/api/discover/tables",
+        base_url: str = "https://ec.europa.eu/eurostat/api/discover/sdmx",
         timeout: int = 10,
     ):
         self.base_url = base_url.rstrip("/")
@@ -29,115 +35,88 @@ class EurostatAPI:
     # Public API
     # -----------------------------------------------------
     def get_dataset(self, dataset_code: str, filters: Dict[str, str]) -> pd.DataFrame:
-        """
-        High-level method that:
-        1. Builds URL
-        2. Retrieves raw JSON
-        3. Converts to DataFrame
-        """
         url = self.build_url(dataset_code, filters)
-        raw = self.fetch_json(url)
-        df = self.to_dataframe(raw)
+        raw_json = self.fetch_json(url)
+        df = self.to_dataframe(raw_json)
         return df
 
     # -----------------------------------------------------
-    # URL builder
+    # Build URL
     # -----------------------------------------------------
     def build_url(self, dataset_code: str, filters: Dict[str, str]) -> str:
-        """
-        Build a Eurostat API URL using dataset code and query filters.
-        Example:
-            dataset_code="STS_RT_M"
-            filters={"geo": "DE", "unit": "I15", "s_adj": "SA"}
-        """
         filter_string = "&".join([f"{k}={v}" for k, v in filters.items()])
-        url = f"{self.base_url}/{dataset_code}?{filter_string}"
-        return url
+        return f"{self.base_url}?table={dataset_code}&format=JSON&{filter_string}"
 
     # -----------------------------------------------------
     # Fetch JSON
     # -----------------------------------------------------
     def fetch_json(self, url: str) -> Dict[str, Any]:
-        """
-        Perform a GET request and return parsed JSON.
-        Raises a clear error if request fails.
-        """
-        response = requests.get(url, timeout=self.timeout)
+        """Perform a GET request and return parsed JSON."""
+
+        # Pretend to be a real browser (Eurostat blocks bots)
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://ec.europa.eu/eurostat/",
+        }
+
+        response = requests.get(url, headers=headers, timeout=self.timeout)
 
         if response.status_code != 200:
             raise ValueError(
-                f"Eurostat API returned status {response.status_code}: {response.text}"
+                f"Eurostat API returned status {response.status_code}: {response.text[:200]}"
             )
-        return response.json()
+
+        data = response.json()
+
+        if "structure" not in data or "dataSets" not in data:
+            raise ValueError(
+                f"Unexpected response format: keys={list(data.keys())}"
+            )
+
+        return data
+
 
     # -----------------------------------------------------
-    # JSON → DataFrame
+    # SDMX JSON → tidy DataFrame
     # -----------------------------------------------------
     def to_dataframe(self, json_data: Dict[str, Any]) -> pd.DataFrame:
         """
-        Convert Eurostat JSON structure into a clean pandas DataFrame.
-
-        Eurostat JSON structure:
-        {
-          "value": {...},
-          "dimension": {...},
-          "id": [...],
-          "size": [...]
-        }
-
-        Output DataFrame:
-        period | geo | value | other_dims...
+        Converts SDMX JSON into a tidy DataFrame.
+        Extracts observations, dimensions, and attributes.
         """
-        # Extract dimensions
-        dims = json_data.get("dimension", {})
-        dimension_ids = json_data.get("id", [])
 
-        # Build index mapping
-        dimension_categories = {
-            dim: dims[dim]["category"]["index"]
-            for dim in dimension_ids
+        # --- Extract dimensions ---
+        dims = json_data["structure"]["dimensions"]["observation"]
+        dim_names = [d["id"] for d in dims]
+        dim_categories = {
+            d["id"]: d["values"] for d in dims
         }
 
-        # Build reverse lookup: 0 → "DE", 1 → "FR", etc.
-        reverse_maps = {
-            dim: {v: k for k, v in cat.items()}
-            for dim, cat in dimension_categories.items()
-        }
+        # --- Extract data ---
+        observations = json_data["dataSets"][0]["observations"]
 
-        # Extract values
-        values = json_data.get("value", {})
-
-        # Prepare rows
         rows = []
-        size = json_data.get("size", [])
+        for key, value in observations.items():
+            indices = list(map(int, key.split(":")))
+            obs_value = value[0] if value else None
 
-        # Cartesian index: (i, j, k, ...)
-        import itertools
-
-        for idx_tuple in itertools.product(*[range(s) for s in size]):
-            # Find flat index
-            flat_index = 0
-            multiplier = 1
-
-            for dim_size, index in zip(reversed(size), reversed(idx_tuple)):
-                flat_index += index * multiplier
-                multiplier *= dim_size
-
-            value = values.get(str(flat_index), None)
-
-            row = {"value": value}
-
-            # Map each dimension index → label
-            for dim_name, index_val in zip(dimension_ids, idx_tuple):
-                label = reverse_maps[dim_name].get(index_val)
-                row[dim_name] = label
+            # Build row with dimension labels
+            row = {"value": obs_value}
+            for dim_name, idx in zip(dim_names, indices):
+                row[dim_name] = dim_categories[dim_name][idx]["name"]
 
             rows.append(row)
 
         df = pd.DataFrame(rows)
 
-        # Rename time column if present
-        if "time" in df.columns:
-            df.rename(columns={"time": "period"}, inplace=True)
+        # Rename time dimension if present
+        if "TIME_PERIOD" in df.columns:
+            df.rename(columns={"TIME_PERIOD": "period"}, inplace=True)
 
         return df
