@@ -127,17 +127,17 @@ This enables analyses such as:
 
 ```scss
                     ┌────────────────────────┐
-                    │       Eurostat API      │
-                    │   (macro indicators)    │
-                    └────────────┬────────────┘
+                    │       Eurostat API     │
+                    │   (macro indicators)   │
+                    └────────────┬───────────┘
                                  │ JSON (SDMX)
                                  ▼
                          Python ETL Pipeline
                                  │
                                  ▼
  ┌────────────┐  CSV  ┌───────────────────────┐
- │ Online      │ ───► │ Micro ETL + Cleaning   │
- │ Retail II   │      └───────────────────────┘
+ │ Online     │ ───►  │ Micro ETL + Cleaning  │
+ │ Retail II  │       └───────────────────────┘
  └────────────┘        │                        
                         ▼                        
                    DuckDB SQL Model             
