@@ -1,6 +1,16 @@
 """
 ecb_financial.py
-Download ECB yield curve, policy rates, FX, and €STR using the NEW SDMX API syntax.
+----------------
+
+Downloads ECB financial series using the ECB Data Portal API (SDMX 2.1),
+restricted to the project analysis window.
+
+Outputs (monthly, clean CSVs):
+
+- data/raw/ecb_yields.csv         (AAA gov bond yields: 1Y, 2Y, 5Y, 10Y)
+- data/raw/ecb_policy_rates.csv   (DFR, MRO, MLF)
+- data/raw/ecb_estr.csv           (€STR)
+- data/raw/ecb_fx.csv             (USD/EUR, GBP/EUR)
 """
 
 from __future__ import annotations
@@ -8,203 +18,182 @@ from __future__ import annotations
 import logging
 from io import StringIO
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Dict
 
 import pandas as pd
 import requests
 
 # ---------------------------------------------------------------------
-# Logging
+# CONFIG
 # ---------------------------------------------------------------------
+
+BASE_URL = "https://data-api.ecb.europa.eu/service/data"
+
+DATA_DIR = Path("data/raw")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+START_PERIOD = "2010-01"
+END_PERIOD = "2024-12"
+
+TIMEOUT = 60
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
 )
 LOG = logging.getLogger("ecb_financial")
 
-DATA_DIR = Path("data/raw")
-DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------
-# Helper: robust SDMX-CSV parsing
+# HELPERS
 # ---------------------------------------------------------------------
 
-
-def _parse_sdmx_csv(text: str, name: str) -> Optional[pd.DataFrame]:
-    """
-    ECB SDMX-CSV responses often contain metadata before the actual header.
-    We:
-      - split into lines
-      - find the first line that starts with TIME_PERIOD
-      - use that as the header, parse the rest as CSV
-    """
-    lines = text.splitlines()
-    header_idx = None
-
-    for i, line in enumerate(lines):
-        if line.startswith("TIME_PERIOD") or line.startswith("TIME_PERIOD,") or line.startswith("TIME_PERIOD;"):
-            header_idx = i
-            break
-
-    if header_idx is None:
-        LOG.error(f"❌ {name}: Could not find TIME_PERIOD header in SDMX-CSV.")
-        return None
-
-    csv_body = "\n".join(lines[header_idx:])
-
-    header_line = lines[header_idx]
-    if ";" in header_line and "," not in header_line:
-        sep = ";"
-    else:
-        sep = ","
-
-    try:
-        df = pd.read_csv(StringIO(csv_body), sep=sep)
-        LOG.info(f"Parsed SDMX-CSV for {name}: {len(df)} rows, cols={df.columns.tolist()}")
-        return df
-    except Exception as e:
-        LOG.error(f"❌ Failed to parse CSV body for {name}: {e}")
-        return None
-
-
-def download_sdmx_csv(url: str, name: str) -> Optional[pd.DataFrame]:
-    """Download SDMX-CSV and return DataFrame using robust parser."""
-    LOG.info(f"Requesting: {url}")
-    resp = requests.get(url, timeout=60)
+def download_csv(url: str, name: str) -> pd.DataFrame:
+    LOG.info(f"⬇️ Requesting {name}")
+    resp = requests.get(url, timeout=TIMEOUT)
 
     if resp.status_code != 200:
-        LOG.error(f"❌ HTTP {resp.status_code} for {name}")
-        return None
+        raise RuntimeError(f"HTTP {resp.status_code} for {name}\nURL: {url}")
 
-    return _parse_sdmx_csv(resp.text, name)
+    return pd.read_csv(StringIO(resp.text))
+
+
+def to_month(df: pd.DataFrame) -> pd.DataFrame:
+    df["month"] = pd.to_datetime(df["TIME_PERIOD"], errors="coerce") \
+                    .dt.to_period("M").astype(str)
+    return df
 
 
 # ---------------------------------------------------------------------
-# URLs (with date filters to keep downloads reasonable)
+# 1. AAA GOVERNMENT BOND YIELDS (MONTHLY)
 # ---------------------------------------------------------------------
 
-BASE_START = "&startPeriod=2010-01"
+def download_aaa_yields() -> None:
+    """
+    AAA euro area government bond yields:
+    1Y, 2Y, 5Y, 10Y
+    """
 
-YIELD_CURVE: Dict[str, str] = {
-    "yc_1y": (
-        "https://data-api.ecb.europa.eu/service/data/YC"
-        "?format=sdmx-csv&select=TIME_PERIOD,OBS_VALUE"
-        "&filter=REF_AREA:U2,MATURITY:SR_1Y" + BASE_START
-    ),
-    "yc_2y": (
-        "https://data-api.ecb.europa.eu/service/data/YC"
-        "?format=sdmx-csv&select=TIME_PERIOD,OBS_VALUE"
-        "&filter=REF_AREA:U2,MATURITY:SR_2Y" + BASE_START
-    ),
-    "yc_5y": (
-        "https://data-api.ecb.europa.eu/service/data/YC"
-        "?format=sdmx-csv&select=TIME_PERIOD,OBS_VALUE"
-        "&filter=REF_AREA:U2,MATURITY:SR_5Y" + BASE_START
-    ),
-    "yc_10y": (
-        "https://data-api.ecb.europa.eu/service/data/YC"
-        "?format=sdmx-csv&select=TIME_PERIOD,OBS_VALUE"
-        "&filter=REF_AREA:U2,MATURITY:SR_10Y" + BASE_START
-    ),
-}
+    urls: Dict[str, str] = {
+        "yc_1y": f"{BASE_URL}/FM/M.U2.EUR.GVT.AAA.1Y"
+                 f"?format=csvdata&startPeriod={START_PERIOD}&endPeriod={END_PERIOD}",
+        "yc_2y": f"{BASE_URL}/FM/M.U2.EUR.GVT.AAA.2Y"
+                 f"?format=csvdata&startPeriod={START_PERIOD}&endPeriod={END_PERIOD}",
+        "yc_5y": f"{BASE_URL}/FM/M.U2.EUR.GVT.AAA.5Y"
+                 f"?format=csvdata&startPeriod={START_PERIOD}&endPeriod={END_PERIOD}",
+        "yc_10y": f"{BASE_URL}/FM/M.U2.EUR.GVT.AAA.10Y"
+                  f"?format=csvdata&startPeriod={START_PERIOD}&endPeriod={END_PERIOD}",
+    }
 
-POLICY_RATES: Dict[str, str] = {
-    "deposit_facility": (
-        "https://data-api.ecb.europa.eu/service/data/FM"
-        "?format=sdmx-csv&select=TIME_PERIOD,OBS_VALUE"
-        "&filter=REF_AREA:U2,KEY_FIGURE:DFR" + BASE_START
-    ),
-    "mro": (
-        "https://data-api.ecb.europa.eu/service/data/FM"
-        "?format=sdmx-csv&select=TIME_PERIOD,OBS_VALUE"
-        "&filter=REF_AREA:U2,KEY_FIGURE:MMR" + BASE_START
-    ),
-    "marginal_lending": (
-        "https://data-api.ecb.europa.eu/service/data/FM"
-        "?format=sdmx-csv&select=TIME_PERIOD,OBS_VALUE"
-        "&filter=REF_AREA:U2,KEY_FIGURE:MLF" + BASE_START
-    ),
-}
+    frames = []
 
-ESTR: Dict[str, str] = {
-    "estr": (
-        "https://data-api.ecb.europa.eu/service/data/EST"
-        "?format=sdmx-csv&select=TIME_PERIOD,OBS_VALUE" + BASE_START
+    for col, url in urls.items():
+        df = download_csv(url, col)
+        df = to_month(df)
+        frames.append(
+            df[["month", "OBS_VALUE"]].rename(columns={"OBS_VALUE": col})
+        )
+
+    out = frames[0]
+    for f in frames[1:]:
+        out = out.merge(f, on="month", how="outer")
+
+    out.sort_values("month").to_csv(DATA_DIR / "ecb_yields.csv", index=False)
+    LOG.info(f"💾 Saved ecb_yields.csv ({len(out):,} rows)")
+
+
+# ---------------------------------------------------------------------
+# 2. ECB POLICY RATES (MONTHLY)
+# ---------------------------------------------------------------------
+
+def download_policy_rates() -> None:
+    urls = {
+        "dfr_rate": f"{BASE_URL}/FM/M.U2.EUR.DFR"
+                    f"?format=csvdata&startPeriod={START_PERIOD}&endPeriod={END_PERIOD}",
+        "mro_rate": f"{BASE_URL}/FM/M.U2.EUR.MMR"
+                    f"?format=csvdata&startPeriod={START_PERIOD}&endPeriod={END_PERIOD}",
+        "mlf_rate": f"{BASE_URL}/FM/M.U2.EUR.MLF"
+                    f"?format=csvdata&startPeriod={START_PERIOD}&endPeriod={END_PERIOD}",
+    }
+
+    frames = []
+
+    for col, url in urls.items():
+        df = download_csv(url, col)
+        df = to_month(df)
+        frames.append(
+            df[["month", "OBS_VALUE"]].rename(columns={"OBS_VALUE": col})
+        )
+
+    out = frames[0]
+    for f in frames[1:]:
+        out = out.merge(f, on="month", how="outer")
+
+    out.sort_values("month").to_csv(DATA_DIR / "ecb_policy_rates.csv", index=False)
+    LOG.info(f"💾 Saved ecb_policy_rates.csv ({len(out):,} rows)")
+
+
+# ---------------------------------------------------------------------
+# 3. €STR (MONTHLY)
+# ---------------------------------------------------------------------
+
+def download_estr() -> None:
+    url = (
+        f"{BASE_URL}/EST/M.U2.EUR.STR"
+        f"?format=csvdata&startPeriod={START_PERIOD}&endPeriod={END_PERIOD}"
     )
-}
 
-# FX still uses csvdata, but response is also CSV-ish. We can reuse parser.
-FX: Dict[str, str] = {
-    "usd": "https://data-api.ecb.europa.eu/service/data/EXR/M.USD.EUR.SP00.A?format=csvdata",
-    "gbp": "https://data-api.ecb.europa.eu/service/data/EXR/M.GBP.EUR.SP00.A?format=csvdata",
-}
+    df = download_csv(url, "estr")
+    df = to_month(df)
+
+    out = df[["month", "OBS_VALUE"]].rename(columns={"OBS_VALUE": "estr_rate"})
+    out.sort_values("month").to_csv(DATA_DIR / "ecb_estr.csv", index=False)
+
+    LOG.info(f"💾 Saved ecb_estr.csv ({len(out):,} rows)")
 
 
 # ---------------------------------------------------------------------
-# Download main
+# 4. FX RATES (MONTHLY)
 # ---------------------------------------------------------------------
 
+def download_fx() -> None:
+    urls = {
+        "exr_usd_eur": f"{BASE_URL}/EXR/M.USD.EUR.SP00.A"
+                       f"?format=csvdata&startPeriod={START_PERIOD}&endPeriod={END_PERIOD}",
+        "exr_gbp_eur": f"{BASE_URL}/EXR/M.GBP.EUR.SP00.A"
+                       f"?format=csvdata&startPeriod={START_PERIOD}&endPeriod={END_PERIOD}",
+    }
+
+    frames = []
+
+    for col, url in urls.items():
+        df = download_csv(url, col)
+        df = to_month(df)
+        frames.append(
+            df[["month", "OBS_VALUE"]].rename(columns={"OBS_VALUE": col})
+        )
+
+    out = frames[0]
+    for f in frames[1:]:
+        out = out.merge(f, on="month", how="outer")
+
+    out.sort_values("month").to_csv(DATA_DIR / "ecb_fx.csv", index=False)
+    LOG.info(f"💾 Saved ecb_fx.csv ({len(out):,} rows)")
+
+
+# ---------------------------------------------------------------------
+# MAIN
+# ---------------------------------------------------------------------
 
 def main() -> None:
-    LOG.info("🚀 Starting ECB financial data download...")
+    LOG.info("🚀 Starting ECB financial data download\n")
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    download_aaa_yields()
+    download_policy_rates()
+    download_estr()
+    download_fx()
 
-    # --------- Yield curve ---------
-    yield_frames = []
-    for name, url in YIELD_CURVE.items():
-        df = download_sdmx_csv(url, name)
-        if df is not None and not df.empty:
-            df["series"] = name
-            yield_frames.append(df)
-
-    if yield_frames:
-        yc = pd.concat(yield_frames, ignore_index=True)
-        yc.to_csv(DATA_DIR / "ecb_yields.csv", index=False)
-        LOG.info(f"💾 Saved ecb_yields.csv ({len(yc)} rows)")
-    else:
-        LOG.warning("⚠️ No yield curve data downloaded.")
-
-    # --------- Policy rates ---------
-    rate_frames = []
-    for name, url in POLICY_RATES.items():
-        df = download_sdmx_csv(url, name)
-        if df is not None and not df.empty:
-            df["series"] = name
-            rate_frames.append(df)
-
-    if rate_frames:
-        pr = pd.concat(rate_frames, ignore_index=True)
-        pr.to_csv(DATA_DIR / "ecb_policy_rates.csv", index=False)
-        LOG.info(f"💾 Saved ecb_policy_rates.csv ({len(pr)} rows)")
-    else:
-        LOG.warning("⚠️ No policy rate data downloaded.")
-
-    # --------- €STR ---------
-    for name, url in ESTR.items():
-        df = download_sdmx_csv(url, name)
-        if df is not None and not df.empty:
-            df.to_csv(DATA_DIR / "ecb_estr.csv", index=False)
-            LOG.info(f"💾 Saved ecb_estr.csv ({len(df)} rows)")
-        else:
-            LOG.warning("⚠️ No €STR data downloaded.")
-
-    # --------- FX ---------
-    fx_frames = []
-    for name, url in FX.items():
-        df = download_sdmx_csv(url, name)
-        if df is not None and not df.empty:
-            df["currency"] = name
-            fx_frames.append(df)
-
-    if fx_frames:
-        fx = pd.concat(fx_frames, ignore_index=True)
-        fx.to_csv(DATA_DIR / "ecb_fx.csv", index=False)
-        LOG.info(f"💾 Saved ecb_fx.csv ({len(fx)} rows)")
-    else:
-        LOG.warning("⚠️ No FX data downloaded.")
-
-    LOG.info("🏁 ECB financial download finished.")
+    LOG.info("\n🏁 ECB financial data download finished successfully.")
 
 
 if __name__ == "__main__":
