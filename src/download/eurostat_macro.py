@@ -1,27 +1,21 @@
 """
-Eurostat Macro Downloader — SDMX-CSV Version (Final)
-----------------------------------------------------
+Eurostat Macro Downloader — SDMX-CSV (Raw Only)
+-----------------------------------------------
 
-Uses the stable SDMX 2.1 API with format=sdmx-csv to download
-complete datasets. This is the officially supported way to obtain
-Eurostat data in bulk as of 2024–2025.
+Downloads full Eurostat macro datasets using the official
+SDMX 2.1 CSV endpoint.
 
-Datasets downloaded:
-- Retail Trade Index (STS_TRTU_M)
-- HICP Inflation (PRC_HICP_MIDX)
-- Household Final Consumption Expenditure (NAMA_10_CO3_P3)
-- Consumer Confidence (EI_BSCO_M)
-
-Output:
-    data/raw/eurostat_<dataset>.csv
+Outputs (raw, untouched):
+    - data/raw/STS_TRTU_M.sdmx.csv
+    - data/raw/PRC_HICP_MIDX.sdmx.csv
+    - data/raw/NAMA_10_CO3_P3.sdmx.csv
+    - data/raw/EI_BSCO_M.sdmx.csv
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-
-import pandas as pd
 import requests
 
 # ---------------------------------------------------------------------
@@ -34,96 +28,45 @@ RAW_DIR.mkdir(parents=True, exist_ok=True)
 BASE_URL = "https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data"
 
 DATASETS = {
-    "rti": "STS_TRTU_M",
-    "hicp": "PRC_HICP_MIDX",
-    "hfce": "NAMA_10_CO3_P3",
-    "cci": "EI_BSCO_M",
+    "STS_TRTU_M": "Retail Trade Index",
+    "PRC_HICP_MIDX": "HICP Inflation",
+    "NAMA_10_CO3_P3": "Household Consumption",
+    "EI_BSCO_M": "Consumer Confidence",
 }
 
-logger = logging.getLogger("EurostatSDMXDownloader")
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
-    logger.addHandler(handler)
-logger.setLevel(logging.INFO)
-
-
-# ---------------------------------------------------------------------
-# HELPERS
-# ---------------------------------------------------------------------
-
-def _download_sdmx_csv(dataset_code: str, out_path: Path) -> Path:
-    """
-    Download SDMX-CSV file for the full dataset.
-    """
-
-    url = f"{BASE_URL}/{dataset_code}?format=sdmx-csv"
-    logger.info(f"⬇️ Downloading {dataset_code} from {url}")
-
-    resp = requests.get(url, timeout=60)
-
-    if resp.status_code != 200:
-        raise RuntimeError(
-            f"HTTP {resp.status_code}: Could not download {dataset_code}\n"
-            f"Details: {resp.text[:200]}"
-        )
-
-    out_path.write_bytes(resp.content)
-    logger.info(f"💾 Saved raw dataset → {out_path.resolve()}")
-
-    return out_path
-
-
-def _convert_to_csv(raw_path: Path, final_path: Path):
-    """
-    SDMX-CSV files are already CSV-like, but sometimes include metadata/header lines.
-    This function loads using pandas with automatic delimiter detection.
-    """
-
-    logger.info(f"📤 Parsing SDMX-CSV → DataFrame: {raw_path.name}")
-
-    df = pd.read_csv(raw_path, sep=",", low_memory=False)
-    df.to_csv(final_path, index=False)
-
-    logger.info(f"💾 Saved clean CSV → {final_path.resolve()} ({len(df):,} rows)")
-
+LOG = logging.getLogger("eurostat_macro")
+if not LOG.handlers:
+    h = logging.StreamHandler()
+    h.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+    LOG.addHandler(h)
+    LOG.setLevel(logging.INFO)
 
 # ---------------------------------------------------------------------
-# MAIN FUNCTIONS
+# DOWNLOAD
 # ---------------------------------------------------------------------
 
-def download_dataset(name: str, code: str):
-    """
-    Download a dataset and parse it into a clean CSV.
-    """
+def download_dataset(code: str) -> None:
+    url = f"{BASE_URL}/{code}?format=sdmx-csv"
+    out_path = RAW_DIR / f"{code}.sdmx.csv"
 
-    raw_path = RAW_DIR / f"{code}.sdmx.csv"
-    clean_path = RAW_DIR / f"eurostat_{name}.csv"
+    LOG.info(f"⬇️ Downloading {code}")
+    r = requests.get(url, timeout=60)
+    r.raise_for_status()
 
-    _download_sdmx_csv(code, raw_path)
-    _convert_to_csv(raw_path, clean_path)
+    out_path.write_bytes(r.content)
+    LOG.info(f"💾 Saved → {out_path}")
 
-    logger.info(f"✅ Completed dataset: {code}\n")
+def main() -> None:
+    LOG.info("🚀 Starting Eurostat macro download\n")
 
-    return clean_path
+    for code in DATASETS:
+        download_dataset(code)
 
-
-def download_all():
-    """
-    Download all macro datasets via SDMX-CSV.
-    """
-
-    logger.info("🚀 Starting Eurostat SDMX-CSV macro download...\n")
-
-    for name, code in DATASETS.items():
-        download_dataset(name, code)
-
-    logger.info("🎉 All Eurostat macro datasets downloaded successfully.\n")
-
+    LOG.info("\n🎉 Eurostat macro download finished successfully")
 
 # ---------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------
 
 if __name__ == "__main__":
-    download_all()
+    main()
