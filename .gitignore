@@ -1,62 +1,44 @@
-# ----------------------------
-# Python / venv / cache files
-# ----------------------------
+# =====================================================
+# Python / Cache
+# =====================================================
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.pkl
-*.egg-info/
-*.egg
 
-# uv / virtual environment
+# =====================================================
+# Virtual environment
+# =====================================================
 .venv/
-uv.lock
 
-# Jupyter Notebook checkpoints
+# =====================================================
+# Jupyter
+# =====================================================
 .ipynb_checkpoints/
 
-# ----------------------------
-# IDE / Editor / OS files
-# ----------------------------
+# =====================================================
+# OS / Editor
+# =====================================================
+.DS_Store
 .vscode/
 .idea/
-.DS_Store
 
-# macOS files
-.DS_Store
-.AppleDouble
-.LSOverride
+# =====================================================
+# Data (ignore contents, keep structure)
+# =====================================================
 
-# ----------------------------
-# Local data storage (NOT tracked)
-# ----------------------------
-data/
-data/raw/
-data/processed/
-data/external/
+# Ignore all raw and processed data files
+data/raw/*
+data/processed/*
 
-# Large exports
+# Allow directory placeholders
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Ignore large data formats explicitly
 *.csv
-*.parquet
-*.zip
 
-# ----------------------------
-# SQL Engines / DuckDB
-# ----------------------------
-*.duckdb
-*.db
-*.sqlite
-*.lock
-
-# ----------------------------
-# Power BI files
-# ----------------------------
-*.pbix
-*.pbit
-
-# ----------------------------
-# Logs
-# ----------------------------
-*.log
-logs/
+# =====================================================
+# Lock files
+# =====================================================
+uv.lock
