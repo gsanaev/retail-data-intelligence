@@ -1,3 +1,0 @@
-Project: Retail Data Intelligence
-
-Retail analytics project using Python (OOP), SQL (DuckDB), API-based data extraction, and Power BI to analyse demand, pricing, and business KPIs.

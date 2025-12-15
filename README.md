@@ -102,13 +102,13 @@ data/processed/macro_panel.csv
 
 **Variables**
 ```text
-country                Euro-area country code
-month                  YYYY-MM
-rti_index              Retail Trade Index (volume)
-hicp_index             Inflation (HICP, CP00)
-hfce                   Household consumption expenditure
-cci                    Consumer confidence indicator
-us_cpi                 Global inflation proxy
+country                 Euro-area country code
+month                   YYYY-MM
+rti_index               Retail Trade Index (volume)
+hicp_index              Inflation (HICP, CP00)
+hfce                    Household consumption expenditure
+cci                     Consumer confidence indicator
+us_cpi                  Global inflation proxy
 us_unemployment         Global labor market proxy
 us_fed_funds            Global monetary policy stance
 us_industrial_prod      Global business cycle proxy
@@ -127,12 +127,10 @@ The project follows a **simple, transparent, and reproducible ETL workflow**:
 3. Build the balanced macro panel
    uv run python -m src.download.macro_etl
 ```
-
 Each step is **idempotent**, documented, and environment-stable.
 
 
-## 📁 Repository Structure (Final)
-
+## 📁 Repository Structure
 ```bash
 retail-data-intelligence/
 │
@@ -176,6 +174,24 @@ The analysis is organized into a **coherent narrative sequence**:
 All results are presented in **Jupyter notebooks** to ensure transparency and interpretability.
 
 
+## 🔍 Key Findings & Implications
+
+The analysis yields several robust insights:
+- **Retail activity is highly regime-dependent**.  
+  Relationships between retail trade, inflation, and confidence vary substantially across normal periods, crisis episodes, and inflationary regimes.
+- **Consumer confidence acts as a leading indicator**.  
+  Declines in confidence tend to precede retail slowdowns, especially during downturns, highlighting its value as an early-warning signal.
+- **Inflation shocks weaken retail dynamics**.  
+  Elevated inflation is associated with weaker retail growth, reflecting erosion of real purchasing power.
+- **Global financial conditions spill into domestic retail activity**.  
+  Global monetary tightening and external shocks influence euro-area retail cycles, even in the absence of domestic recessions.
+
+**Implications**
+- For policymakers: retail indicators provide timely signals of household demand stress and macroeconomic transmission.
+- For analysts: static models assuming stable relationships are likely to fail during regime shifts.
+- For forecasting: regime-aware and scenario-based approaches dominate naïve trend extrapolation.
+
+
 ## 🧠 Methodological Philosophy
 
 - Data discipline over data volume
@@ -204,6 +220,11 @@ This project delivers:
 - A portfolio-ready applied macro project
 - A foundation suitable for econometric extensions or forecasting research
 
+## 📘 License
+
+**MIT License**
+
+
 ---
 
 ## 📬 Contact
@@ -211,5 +232,10 @@ This project delivers:
 **Golib Sanaev**  
 Data Scientist (Applied ML & Business Analytics)  
 
-GitHub: https://github.com/gsanaev  
-LinkedIn: https://linkedin.com/in/golib-sanaev  
+**GitHub:** https://github.com/gsanaev
+**Email:** gsanaev80@gmail.com  
+**LinkedIn:** https://linkedin.com/in/golib-sanaev  
+
+## 📚 Citation
+> Sanaev, G. (2025). *Retail Data Intelligence*  
+> GitHub Repository: [https://github.com/gsanaev/retail-data-intelligence](https://github.com/gsanaev/retail-data-intelligence)  
